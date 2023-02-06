@@ -3,16 +3,15 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"github.com/go-sql-driver/mysql"
+	"github.com/gorilla/mux"
+	"goBlogByMyself/pkg/database"
 	"goBlogByMyself/pkg/logger"
 	"goBlogByMyself/pkg/route"
-	"strconv"
-	"time"
-
-	"github.com/gorilla/mux"
+	"goBlogByMyself/pkg/types"
 	"html/template"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -41,38 +40,6 @@ func (a Article) Link() string {
 		return ""
 	}
 	return showURL.String()
-}
-
-func initDB() {
-	var err error
-	config := mysql.Config{
-		User:                 "luk",
-		Passwd:               "951001",
-		Net:                  "tcp",
-		Addr:                 "herrluk.icu",
-		DBName:               "goblog",
-		AllowNativePasswords: true,
-	}
-
-	// 准备数据库连接池
-	db, err = sql.Open("mysql", config.FormatDSN())
-	logger.LogError(err)
-
-	// 设置最大连接数
-	db.SetMaxOpenConns(25)
-
-	// 设置最大空闲连接数
-	db.SetMaxIdleConns(25)
-
-	// 设置每个连接的过期时间
-	db.SetConnMaxLifetime(5 * time.Minute)
-
-	// 设置每个链接的过期时间
-	db.SetConnMaxLifetime(5 * time.Minute)
-
-	// 尝试连接，失败报错
-	err = db.Ping()
-	logger.LogError(err)
 }
 
 func validateArticleFormData(title string, body string) map[string]string {
@@ -143,7 +110,7 @@ func articlesShowHandler(w http.ResponseWriter, r *http.Request) {
 		tmpl, err := template.New("show.gohtml").Funcs(
 			template.FuncMap{
 				"RouteName2URL": route.Name2URL,
-				"Int64ToString": Int64ToString,
+				"Int64ToString": types.Int64ToString,
 			}).ParseFiles("resources/views/articles/show.gohtml")
 
 		logger.LogError(err)
@@ -163,9 +130,7 @@ func RouteName2URL(routeName string, pairs ...string) string {
 }
 
 // Int64ToString 将 int64 转换为 string
-func Int64ToString(num int64) string {
-	return strconv.FormatInt(num, 10)
-}
+
 func articlesEditHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 1. 获取 URL 参数
@@ -486,17 +451,6 @@ func articlesCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func createTables() {
-	createArticlesSQL := `CREATE TABLE IF NOT EXISTS articles(
-    id bigint(20) PRIMARY KEY AUTO_INCREMENT NOT NULL,
-    title varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-    body longtext COLLATE utf8mb4_unicode_ci
-); `
-
-	_, err := db.Exec(createArticlesSQL)
-	logger.LogError(err)
-}
-
 // Delete 方法用以从数据库中删除单条记录
 func (a Article) Delete() (rowsAffected int64, err error) {
 	rs, err := db.Exec("DELETE FROM articles WHERE id = " + strconv.FormatInt(a.ID, 10))
@@ -514,8 +468,9 @@ func (a Article) Delete() (rowsAffected int64, err error) {
 }
 
 func main() {
-	initDB()
-	createTables()
+	database.Initialize()
+	db = database.DB
+
 	route.Initialize()
 	router = route.Router
 	router.HandleFunc("/", homeHandler).Methods("GET").Name("home")
